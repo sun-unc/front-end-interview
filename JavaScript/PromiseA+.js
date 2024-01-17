@@ -31,7 +31,11 @@ const SunPromise = (function () {
    * @param {any} value
    */
   function isPromise(value) {
-    return !!(value && typeof value === "object" && typeof value.then === "function");
+    return !!(
+      value &&
+      typeof value === "object" &&
+      typeof value.then === "function"
+    );
   }
   class SunPromise {
     /**
@@ -56,17 +60,16 @@ const SunPromise = (function () {
       return new SunPromise((resolve, reject) => {
         this._pushCallbackQueue(onFulfilled, RESOLVED, resolve, reject);
         this._pushCallbackQueue(onRejected, REJECTED, resolve, reject);
+        this._runCallbackQueue(); // 处理当new Promise的时候 直接resolve的情况
       });
     }
     catch() {}
 
     _resolve(data) {
       this._changeStatus(RESOLVED, data);
-      this._runCallbackQueue();
     }
     _reject(reason) {
       this._changeStatus(REJECTED, reason);
-      this._runCallbackQueue();
     }
     /**
      *
@@ -77,8 +80,14 @@ const SunPromise = (function () {
       if (this.status !== PENDING) {
         return;
       }
+      // 处理reject/resolve是一个Promise的情况
+      if (isPromise(value)) {
+        value.then(this._resolve.bind(this), this._reject.bind(this));
+        return;
+      }
       this.status = status;
       this.value = value;
+      this._runCallbackQueue();
     }
     /**
      * @param {Function} executor  //then方法需要执行的函数
@@ -102,7 +111,8 @@ const SunPromise = (function () {
      */
     _runCallbackQueue() {
       while (this._callbackQueue.length) {
-        const { executor, status, resolve, reject } = this._callbackQueue.shift;
+        const { executor, status, resolve, reject } =
+          this._callbackQueue.shift();
         this._runCallbackQueueItem(executor, status, resolve, reject);
       }
     }
@@ -120,8 +130,8 @@ const SunPromise = (function () {
             } else {
               resolve(result);
             }
-          } catch {
-            reject(this.value);
+          } catch (error) {
+            reject(error);
           }
         }
       });
@@ -130,12 +140,19 @@ const SunPromise = (function () {
   return SunPromise;
 })();
 
-const promise = new SunPromise((resolve, reject) => {
-  resolve("0");
-});
-promise.then((data) => {
-  //then和catch函数里面的任务是先放到队列里面，再根据最终状态执行
-  console.log(1);
+const promise = new Promise((resolve, reject) => {
+  resolve(1);
 });
 
-console.log(promise);
+promise
+  .then((data) => {
+    // 使用箭头函数
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        resolve(2);
+      }, 1000);
+    });
+  })
+  .then((data) => {
+    console.log(data);
+  });
